@@ -1,0 +1,67 @@
+{
+  "entities": {
+    "UserPrivateProfile": {
+      "title": "UserPrivateProfile",
+      "description": "Private user preferences, E2EE salt, and active theme settings.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "email": { "type": "string", "minLength": 3, "maxLength": 256 },
+        "activeTheme": { "type": "string", "enum": ["obsidian", "midnight", "daylight", "emerald-ink", "paper-warm"] },
+        "e2eeSalt": { "type": "string", "maxLength": 256 },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["uid", "email", "activeTheme", "updatedAt"]
+    },
+    "SyncedConversation": {
+      "title": "SyncedConversation",
+      "description": "Cross-platform E2EE-capable synced conversation metadata.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 512 },
+        "mode": { "type": "string", "enum": ["chat", "agent", "companion"] },
+        "providerId": { "type": "string", "maxLength": 64 },
+        "modelId": { "type": "string", "maxLength": 128 },
+        "encrypted": { "type": "boolean" },
+        "iv": { "type": "string", "maxLength": 128 },
+        "lastMessageCiphertext": { "type": "string", "maxLength": 65536 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "title", "mode", "encrypted", "createdAt", "updatedAt"]
+    },
+    "SyncedDevice": {
+      "title": "SyncedDevice",
+      "description": "Registered Windows, Android, or Web device for cross-platform companion sync.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "pattern": "^[a-zA-Z0-9_\\-]+$", "maxLength": 128 },
+        "userId": { "type": "string", "minLength": 1, "maxLength": 128 },
+        "deviceName": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "platform": { "type": "string", "enum": ["windows", "android", "web"] },
+        "companionMode": { "type": "string", "enum": ["overlay", "background_service", "web_viewport"] },
+        "companionState": { "type": "string", "enum": ["idle", "talking", "using_tool", "thinking"] },
+        "e2eeFingerprint": { "type": "string", "maxLength": 64 },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "userId", "deviceName", "platform", "companionMode", "companionState", "createdAt", "updatedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}/private/{docId}": {
+      "schema": { "$ref": "#/entities/UserPrivateProfile" },
+      "description": "Owner-only private profile & E2EE vault metadata."
+    },
+    "/users/{userId}/conversations/{conversationId}": {
+      "schema": { "$ref": "#/entities/SyncedConversation" },
+      "description": "Real-time cross-device synchronized conversations."
+    },
+    "/users/{userId}/devices/{deviceId}": {
+      "schema": { "$ref": "#/entities/SyncedDevice" },
+      "description": "Cross-platform Windows / Android / Web device presence & companion state."
+    }
+  }
+}

@@ -1,0 +1,6 @@
+{
+  "name": "Aetheris AI",
+  "description": "Cross-platform AI workspace with real-time streaming chat, autonomous agent sandbox, 3D interactive companion, and end-to-end encrypted local & cloud sync.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

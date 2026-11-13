@@ -1,0 +1,176 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Global default-deny safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerifiedOwner(userId) {
+      return isSignedIn()
+        && request.auth.uid == userId
+        && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string
+        && id.size() >= 1
+        && id.size() <= 128
+        && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidTheme(theme) {
+      return theme is string
+        && theme in ['obsidian', 'midnight', 'daylight', 'emerald-ink', 'paper-warm'];
+    }
+
+    function isValidMode(mode) {
+      return mode is string && mode in ['chat', 'agent', 'companion'];
+    }
+
+    function isValidPlatform(platform) {
+      return platform is string && platform in ['windows', 'android', 'web'];
+    }
+
+    function isValidCompanionMode(cMode) {
+      return cMode is string
+        && cMode in ['overlay', 'background_service', 'web_viewport'];
+    }
+
+    function isValidCompanionState(cState) {
+      return cState is string
+        && cState in ['idle', 'talking', 'using_tool', 'thinking'];
+    }
+
+    function isValidUserPrivateProfile(data, userId) {
+      return data.keys().hasAll(['uid', 'email', 'activeTheme', 'updatedAt'])
+        && data.keys().hasOnly(['uid', 'email', 'activeTheme', 'e2eeSalt', 'updatedAt'])
+        && data.uid is string
+        && data.uid.size() >= 1
+        && data.uid.size() <= 128
+        && data.uid == userId
+        && data.email is string
+        && data.email.size() >= 3
+        && data.email.size() <= 256
+        && isValidTheme(data.activeTheme)
+        && (!('e2eeSalt' in data) || (data.e2eeSalt is string && data.e2eeSalt.size() <= 256))
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSyncedConversation(data, userId, conversationId) {
+      return data.keys().hasAll(['id', 'userId', 'title', 'mode', 'encrypted', 'createdAt', 'updatedAt'])
+        && data.keys().hasOnly([
+          'id', 'userId', 'title', 'mode', 'providerId', 'modelId',
+          'encrypted', 'iv', 'lastMessageCiphertext', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.id == conversationId
+        && data.userId is string
+        && data.userId.size() >= 1
+        && data.userId.size() <= 128
+        && data.userId == userId
+        && data.title is string
+        && data.title.size() >= 1
+        && data.title.size() <= 512
+        && isValidMode(data.mode)
+        && (!('providerId' in data) || (data.providerId is string && data.providerId.size() <= 64))
+        && (!('modelId' in data) || (data.modelId is string && data.modelId.size() <= 128))
+        && data.encrypted is bool
+        && (!('iv' in data) || (data.iv is string && data.iv.size() <= 128))
+        && (!('lastMessageCiphertext' in data) || (data.lastMessageCiphertext is string && data.lastMessageCiphertext.size() <= 65536))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    function isValidSyncedDevice(data, userId, deviceId) {
+      return data.keys().hasAll([
+        'id', 'userId', 'deviceName', 'platform', 'companionMode',
+        'companionState', 'createdAt', 'updatedAt'
+      ])
+        && data.keys().hasOnly([
+          'id', 'userId', 'deviceName', 'platform', 'companionMode',
+          'companionState', 'e2eeFingerprint', 'createdAt', 'updatedAt'
+        ])
+        && isValidId(data.id)
+        && data.id == deviceId
+        && data.userId is string
+        && data.userId.size() >= 1
+        && data.userId.size() <= 128
+        && data.userId == userId
+        && data.deviceName is string
+        && data.deviceName.size() >= 1
+        && data.deviceName.size() <= 120
+        && isValidPlatform(data.platform)
+        && isValidCompanionMode(data.companionMode)
+        && isValidCompanionState(data.companionState)
+        && (!('e2eeFingerprint' in data) || (data.e2eeFingerprint is string && data.e2eeFingerprint.size() <= 64))
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
+    }
+
+    match /users/{userId}/private/{docId} {
+      allow get: if isValidId(userId) && isValidId(docId) && isVerifiedOwner(userId);
+      allow list: if isSignedIn() && request.auth.uid == userId && resource.data.uid == request.auth.uid;
+      allow create: if isValidId(userId) && isValidId(docId) && isVerifiedOwner(userId)
+        && isValidUserPrivateProfile(incoming(), userId)
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId) && isValidId(docId) && isVerifiedOwner(userId)
+        && isValidUserPrivateProfile(incoming(), userId)
+        && incoming().uid == existing().uid
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly(['activeTheme', 'e2eeSalt', 'updatedAt']);
+      allow delete: if isValidId(userId) && isValidId(docId) && isVerifiedOwner(userId);
+    }
+
+    match /users/{userId}/conversations/{conversationId} {
+      allow get: if isValidId(userId) && isValidId(conversationId) && isVerifiedOwner(userId);
+      allow list: if isSignedIn() && request.auth.uid == userId && resource.data.userId == request.auth.uid;
+      allow create: if isValidId(userId) && isValidId(conversationId) && isVerifiedOwner(userId)
+        && isValidSyncedConversation(incoming(), userId, conversationId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId) && isValidId(conversationId) && isVerifiedOwner(userId)
+        && isValidSyncedConversation(incoming(), userId, conversationId)
+        && incoming().id == existing().id
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'title', 'mode', 'providerId', 'modelId', 'encrypted', 'iv', 'lastMessageCiphertext', 'updatedAt'
+        ]);
+      allow delete: if isValidId(userId) && isValidId(conversationId) && isVerifiedOwner(userId);
+    }
+
+    match /users/{userId}/devices/{deviceId} {
+      allow get: if isValidId(userId) && isValidId(deviceId) && isVerifiedOwner(userId);
+      allow list: if isSignedIn() && request.auth.uid == userId && resource.data.userId == request.auth.uid;
+      allow create: if isValidId(userId) && isValidId(deviceId) && isVerifiedOwner(userId)
+        && isValidSyncedDevice(incoming(), userId, deviceId)
+        && incoming().createdAt == request.time
+        && incoming().updatedAt == request.time;
+      allow update: if isValidId(userId) && isValidId(deviceId) && isVerifiedOwner(userId)
+        && isValidSyncedDevice(incoming(), userId, deviceId)
+        && incoming().id == existing().id
+        && incoming().userId == existing().userId
+        && incoming().createdAt == existing().createdAt
+        && incoming().updatedAt == request.time
+        && incoming().diff(existing()).affectedKeys().hasOnly([
+          'deviceName', 'platform', 'companionMode', 'companionState', 'e2eeFingerprint', 'updatedAt'
+        ]);
+      allow delete: if isValidId(userId) && isValidId(deviceId) && isVerifiedOwner(userId);
+    }
+  }
+}
